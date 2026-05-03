@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>julesdotmd — 3D Graph</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #161618;
+      color: #ebebec;
+      font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+    }
+    #graph { width: 100vw; height: 100vh; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      color: #7b97aa;
+      text-decoration: none;
+      font-size: 14px;
+      padding: 8px 14px;
+      border: 1px solid #393639;
+      border-radius: 6px;
+      background: rgba(22, 22, 24, 0.85);
+      backdrop-filter: blur(8px);
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #back:hover { border-color: #7b97aa; color: #ebebec; }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 10;
+      font-size: 12px;
+      color: #646464;
+      background: rgba(22, 22, 24, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+    #tooltip {
+      position: fixed;
+      z-index: 20;
+      pointer-events: none;
+      background: rgba(22, 22, 24, 0.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid #393639;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: #ebebec;
+      display: none;
+      max-width: 260px;
+    }
+    #tooltip .tags { color: #646464; font-size: 11px; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <a id="back" href="../index.html">&larr; Back to wiki</a>
+  <div id="graph"></div>
+  <div id="info">Drag to rotate &middot; scroll to zoom &middot; click a node to open</div>
+  <div id="tooltip"></div>
+
+  <script src="https://unpkg.com/3d-force-graph@1"></script>
+  <script>
+    const tooltip = document.getElementById('tooltip');
+    const basePath = window.location.pathname.replace(/\/static\/graph3d\.html.*$/, '');
+
+    fetch(basePath + '/static/contentIndex.json')
+      .then(r => r.json())
+      .then(data => {
+        const slugs = Object.keys(data);
+        const slugSet = new Set(slugs);
+
+        const nodes = slugs.map(slug => {
+          const entry = data[slug];
+          return {
+            id: slug,
+            name: entry.title,
+            tags: entry.tags || [],
+            linkCount: 0,
+          };
+        });
+
+        const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+        const linkSet = new Set();
+        const links = [];
+        for (const slug of slugs) {
+          const entry = data[slug];
+          for (const target of entry.links || []) {
+            const targetSlug = slugs.find(s => {
+              const parts = s.split('/');
+              const last = parts[parts.length - 1];
+              return last === target.toLowerCase() ||
+                     s === target.toLowerCase() ||
+                     last === target.replace(/\s+/g, '-').toLowerCase();
+            });
+            if (targetSlug && slugSet.has(targetSlug)) {
+              const key = [slug, targetSlug].sort().join('||');
+              if (!linkSet.has(key)) {
+                linkSet.add(key);
+                links.push({ source: slug, target: targetSlug });
+                const targetNode = nodeMap.get(targetSlug);
+                if (targetNode) targetNode.linkCount++;
+                const sourceNode = nodeMap.get(slug);
+                if (sourceNode) sourceNode.linkCount++;
+              }
+            }
+          }
+        }
+
+        const maxLinks = Math.max(...nodes.map(n => n.linkCount), 1);
+
+        const typeColors = {
+          source: '#84a59d',
+          concept: '#7b97aa',
+          entity: '#b8a9c9',
+          topic: '#c9a984',
+          analysis: '#a9c984',
+          meta: '#646464',
+        };
+
+        function getNodeColor(node) {
+          const slug = node.id;
+          if (slug.startsWith('sources/')) return typeColors.source;
+          if (slug.startsWith('concepts/')) return typeColors.concept;
+          if (slug.startsWith('entities/')) return typeColors.entity;
+          if (slug.startsWith('topics/')) return typeColors.topic;
+          if (slug.startsWith('analyses/')) return typeColors.analysis;
+          return typeColors.meta;
+        }
+
+        const graph = ForceGraph3D()(document.getElementById('graph'))
+          .graphData({ nodes, links })
+          .nodeVal(node => 2 + (node.linkCount / maxLinks) * 8)
+          .nodeColor(getNodeColor)
+          .nodeOpacity(0.9)
+          .linkColor(() => 'rgba(100, 100, 100, 0.3)')
+          .linkWidth(0.5)
+          .backgroundColor('#161618')
+          .onNodeClick(node => {
+            window.location.href = basePath + '/' + node.id + '.html';
+          })
+          .onNodeHover(node => {
+            document.body.style.cursor = node ? 'pointer' : 'default';
+            if (node) {
+              tooltip.style.display = 'block';
+              tooltip.innerHTML = '<strong>' + node.name + '</strong>' +
+                (node.tags.length ? '<div class="tags">' + node.tags.join(', ') + '</div>' : '');
+            } else {
+              tooltip.style.display = 'none';
+            }
+          })
+          .nodeLabel('')
+          .nodeThreeObjectExtend(true)
+          .d3AlphaDecay(0.02)
+          .d3VelocityDecay(0.3);
+
+        document.addEventListener('mousemove', e => {
+          tooltip.style.left = (e.clientX + 14) + 'px';
+          tooltip.style.top = (e.clientY + 14) + 'px';
+        });
+
+        graph.d3Force('charge').strength(-80);
+        graph.d3Force('link').distance(40);
+      })
+      .catch(err => {
+        document.getElementById('info').textContent = 'Failed to load graph data: ' + err.message;
+      });
+  </script>
+</body>
+</html>
