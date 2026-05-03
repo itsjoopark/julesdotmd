@@ -1,0 +1,6 @@
+{
+  "buildCommand": "rm -rf content && cp -r ../wiki content && npx quartz build",
+  "outputDirectory": "public",
+  "installCommand": "npm install",
+  "framework": null
+}
