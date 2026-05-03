@@ -67,7 +67,7 @@
   <script src="https://unpkg.com/3d-force-graph@1"></script>
   <script>
     const tooltip = document.getElementById('tooltip');
-    const basePath = window.location.pathname.replace(/\/static\/graph3d\.html.*$/, '');
+    const basePath = window.location.pathname.replace(/\/static\/graph3d(\.html)?.*$/, '');
 
     fetch(basePath + '/static/contentIndex.json')
       .then(r => r.json())
